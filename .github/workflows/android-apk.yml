@@ -1,10 +1,11 @@
-
-name: SprachKompass - Android APK
+name: SprachKompass - APK erstellen
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    paths:
+      - 'SprachKompass_GitHub_APK_Projekt.zip'
+      - '.github/workflows/android-apk.yml'
 
 permissions:
   contents: read
@@ -12,17 +13,24 @@ permissions:
 jobs:
   android-apk:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Projekt herunterladen
+      - name: Repository laden
         uses: actions/checkout@v4
 
-      - name: Node.js 22 einrichten
+      - name: Projekt aus ZIP entpacken
+        run: |
+          test -f SprachKompass_GitHub_APK_Projekt.zip
+          mkdir -p app-source
+          unzip -q SprachKompass_GitHub_APK_Projekt.zip -d app-source
+          test -f app-source/index.html
+          test -f app-source/app.js
+
+      - name: Node.js einrichten
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Java 21 einrichten
+      - name: Java einrichten
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -31,16 +39,14 @@ jobs:
       - name: Android SDK einrichten
         uses: android-actions/setup-android@v3
 
-      - name: Capacitor installieren und Web-App vorbereiten
-        shell: bash
+      - name: Android-Projekt erzeugen
+        working-directory: app-source
         run: |
           npm init -y
           npm install @capacitor/core@^8 @capacitor/android@^8 @capacitor/cli@^8
-
           mkdir -p www/icons
           cp index.html app.js sw.js manifest.webmanifest www/
           cp -R icons/. www/icons/
-
           cat > capacitor.config.json <<'EOF'
           {
             "appId": "de.sprachkompass.lernen",
@@ -48,21 +54,19 @@ jobs:
             "webDir": "www"
           }
           EOF
-
           npx cap add android
           npx cap sync android
 
-      - name: Debug-APK erstellen
-        shell: bash
+      - name: Debug-APK bauen
+        working-directory: app-source/android
         run: |
-          chmod +x android/gradlew
-          cd android
+          chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
-      - name: APK zum Herunterladen bereitstellen
+      - name: APK bereitstellen
         uses: actions/upload-artifact@v4
         with:
-          name: SprachKompass-Android-Debug-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: SprachKompass-APK
+          path: app-source/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
