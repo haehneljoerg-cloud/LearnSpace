@@ -1,27 +1,34 @@
-name: SprachKompass - APK erstellen
+
+name: SprachKompass APK erstellen
 
 on:
   workflow_dispatch:
   push:
-    paths:
-      - 'SprachKompass_GitHub_APK_Projekt.zip'
-      - '.github/workflows/android-apk.yml'
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
-  android-apk:
+  build:
+    name: Android APK bauen
     runs-on: ubuntu-latest
+
     steps:
       - name: Repository laden
         uses: actions/checkout@v4
 
       - name: Projekt aus ZIP entpacken
+        shell: bash
         run: |
-          test -f SprachKompass_GitHub_APK_Projekt.zip
+          set -e
           mkdir -p app-source
-          unzip -q SprachKompass_GitHub_APK_Projekt.zip -d app-source
+
+          unzip -q \
+            SprachKompass_GitHub_APK_Projekt.zip \
+            -d app-source
+
           test -f app-source/index.html
           test -f app-source/app.js
 
@@ -36,19 +43,45 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Android SDK einrichten
-  uses: android-actions/setup-android@v3
-  with:
-    cmdline-tools-version: '20.0'
+      - name: Android SDK prüfen
+        shell: bash
+        run: |
+          echo "Android SDK:"
+          echo "$ANDROID_HOME"
+          test -d "$ANDROID_HOME"
+          java -version
 
       - name: Android-Projekt erzeugen
-        working-directory: app-source
+        shell: bash
         run: |
+          set -e
+
+          mkdir -p build-app/www
+
+          cp app-source/index.html build-app/www/
+          cp app-source/app.js build-app/www/
+
+          if [ -f app-source/sw.js ]; then
+            cp app-source/sw.js build-app/www/
+          fi
+
+          if [ -f app-source/manifest.webmanifest ]; then
+            cp app-source/manifest.webmanifest build-app/www/
+          fi
+
+          if [ -d app-source/icons ]; then
+            cp -r app-source/icons build-app/www/
+          fi
+
+          cd build-app
+
           npm init -y
-          npm install @capacitor/core@^8 @capacitor/android@^8 @capacitor/cli@^8
-          mkdir -p www/icons
-          cp index.html app.js sw.js manifest.webmanifest www/
-          cp -R icons/. www/icons/
+
+          npm install \
+            @capacitor/core@^8 \
+            @capacitor/cli@^8 \
+            @capacitor/android@^8
+
           cat > capacitor.config.json <<'EOF'
           {
             "appId": "de.sprachkompass.lernen",
@@ -56,12 +89,15 @@ jobs:
             "webDir": "www"
           }
           EOF
+
           npx cap add android
           npx cap sync android
 
-      - name: Debug-APK bauen
-        working-directory: app-source/android
+      - name: Debug APK bauen
+        shell: bash
         run: |
+          set -e
+          cd build-app/android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
@@ -69,6 +105,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SprachKompass-APK
-          path: app-source/android/app/build/outputs/apk/debug/app-debug.apk
+          path: build-app/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
