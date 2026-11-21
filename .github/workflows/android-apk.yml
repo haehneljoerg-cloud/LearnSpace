@@ -1,0 +1,68 @@
+
+name: SprachKompass - Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  android-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Projekt herunterladen
+        uses: actions/checkout@v4
+
+      - name: Node.js 22 einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Java 21 einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Android SDK einrichten
+        uses: android-actions/setup-android@v3
+
+      - name: Capacitor installieren und Web-App vorbereiten
+        shell: bash
+        run: |
+          npm init -y
+          npm install @capacitor/core@^8 @capacitor/android@^8 @capacitor/cli@^8
+
+          mkdir -p www/icons
+          cp index.html app.js sw.js manifest.webmanifest www/
+          cp -R icons/. www/icons/
+
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "de.sprachkompass.lernen",
+            "appName": "SprachKompass",
+            "webDir": "www"
+          }
+          EOF
+
+          npx cap add android
+          npx cap sync android
+
+      - name: Debug-APK erstellen
+        shell: bash
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug --no-daemon
+
+      - name: APK zum Herunterladen bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: SprachKompass-Android-Debug-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
